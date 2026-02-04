@@ -1,73 +1,142 @@
 package main
 
 import (
-	"fmt"
 	"github.com/djskncxm/TraceParse/pkg/core"
 	"github.com/djskncxm/TraceParse/pkg/tui"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
 func main() {
 	app := tview.NewApplication()
-
-	top := tui.NewBlock("汇编", true)
-	middle := tui.NewBlock("寄存器", true)
-	bottom := tui.NewBlock("用户交互", false)
-
-	flex := tview.NewFlex().SetDirection(tview.FlexRow).AddItem(top, 0, 1, false).
-		AddItem(middle, 0, 1, false).
-		AddItem(bottom, 0, 1, false)
-
-	tvTOP := top.GetItem(0).(*tview.TextView)
-
-	// 创建一个channel来传递指令
-	instructionChan := make(chan string, 1000) // 缓冲通道，避免阻塞
-
-	go core.LoadInstructions("../assets/code.log", instructionChan)
-	go func() {
-		lines := []string{}
-		current := 0
-		const panelHeight = 16
-
-		for line := range instructionChan {
-			lines = append(lines, line)
-
-			app.QueueUpdateDraw(func() {
-				tvTOP.Clear()
-
-				// 计算显示窗口
-				start := current - panelHeight/2
-				if start < 0 {
-					start = 0
+	
+	// 创建 TraceManager 和 User
+	tm := core.NewTraceManager()
+	user := core.NewUser(tm)
+	
+	// 创建视图
+	asmView := tui.NewAsmView()
+	regView := tui.NewRegView()
+	statusView := tui.NewStatusView()
+	memoryView := tui.NewMemoryView()
+	
+	// 创建应用状态
+	state := &tui.AppState{
+		TraceManager: tm,
+		User:         user,
+		App:          app,
+		AsmView:      asmView,
+		RegView:      regView,
+		StatusView:   statusView,
+		MemoryView:   memoryView,
+		AutoStepChan: make(chan bool, 1),
+	}
+	
+	// 启动自动步进管理器
+	go tui.StartAutoStep(state)
+	
+	// 创建输入框
+	inputField := tui.NewInputView(state)
+	state.InputField = inputField
+	
+	// 添加全局键盘快捷键
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyRight:
+			// 右箭头：下一个指令
+			cmd := user.ParseCommand("n")
+			tui.UpdateDisplay(state, cmd)
+			return nil
+		case tcell.KeyLeft:
+			// 左箭头：上一个指令
+			cmd := user.ParseCommand("p")
+			tui.UpdateDisplay(state, cmd)
+			return nil
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'q', 'Q':
+				app.Stop()
+				return nil
+			case ' ':
+				// 空格键：重复上一个命令或执行next
+				cmd := user.ParseCommand("")
+				if cmd != nil {
+					tui.UpdateDisplay(state, cmd)
+				} else {
+					// 否则执行next
+					cmd = user.ParseCommand("n")
+					tui.UpdateDisplay(state, cmd)
 				}
-				end := start + panelHeight
-				if end > len(lines) {
-					end = len(lines)
-					start = end - panelHeight
-					if start < 0 {
-						start = 0
-					}
-				}
-
-				// 输出窗口内容，高亮当前行
-				for i := start; i < end; i++ {
-					if i == current {
-						fmt.Fprintf(tvTOP, "[yellow]> %s[white]\n", lines[i])
-					} else {
-						fmt.Fprintf(tvTOP, "  %s\n", lines[i])
-					}
-				}
-			})
-			current++
+				return nil
+			}
 		}
-
-		// 所有指令显示完成
-		app.QueueUpdateDraw(func() {
-			fmt.Fprintf(tvTOP, "[green]所有指令已显示完成！\n")
-		})
+		return event
+	})
+	
+	// 创建右侧面板
+	rightPanel := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(statusView, 5, 1, false).
+		AddItem(regView, 0, 3, false).
+		AddItem(inputField, 3, 0, true)
+	
+	// 创建根布局
+	root := tview.NewFlex().
+		AddItem(asmView, 0, 1, false).    // 汇编视图占2/5
+		AddItem(rightPanel, 0, 2, false). // 右侧面板占2/5
+		AddItem(memoryView, 0, 1, false)  // 内存视图占1/5
+	
+	// 加载示例指令文件
+	go func() {
+		filename := "../assets/code.log" // 修改为你的文件路径
+		err := tui.LoadInstructionsFromFile(filename, state)
+		if err != nil {
+			// 如果没有文件，创建一些示例指令
+			state.StatusView.SetText("Error loading file: " + err.Error() + 
+				"\nUsing example instructions...")
+			
+			// 添加一些示例指令
+			exampleInstructions := []string{
+				"0001|0x400000|0x0|\"add x0, x1, x2\"|0x0|0x1|0x2|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x400000|0x400004",
+				"0002|0x400004|0x4|\"sub x3, x4, x5\"|0x0|0x1|0x2|0x0|0x4|0x5|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x400004|0x400008",
+				"0003|0x400008|0x8|\"ldr x6, [x7, #16]\"|0x0|0x1|0x2|0x0|0x4|0x5|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x400008|0x40000c",
+				"0004|0x40000c|0xc|\"add x1, x2, x3\"|0x0|0x3|0x2|0x3|0x4|0x5|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x40000c|0x400010",
+				"0005|0x400010|0x10|\"mov x8, x9\"|0x0|0x3|0x2|0x3|0x4|0x5|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x400010|0x400014",
+			}
+			
+			for _, line := range exampleInstructions {
+				if traceLine, err := core.ParseLine(line); err == nil {
+					tm.AddInstruction(traceLine)
+				}
+			}
+			
+			tui.UpdateDisplay(state, nil)
+		}
 	}()
-
-	if err := app.SetRoot(flex, true).Run(); err != nil {
+	
+	// 设置初始帮助信息
+	helpText := `Welcome to TraceParse!
+  
+  Commands:
+    n, next       - Next instruction (n5 for 5 steps)
+    p, prev       - Previous instruction (p3 for 3 steps)
+    g <line>      - Go to specific line
+    r, reg        - Show registers
+    run           - Auto step through instructions
+    stop          - Stop auto stepping
+    step <ms>     - Set step delay in milliseconds
+    space         - Repeat last command or step forward
+    ←/→           - Previous/Next instruction
+    q, quit       - Quit
+  
+  Tip: Press Enter without typing to repeat last command!`
+	
+	statusView.SetText(helpText)
+	
+	// 运行应用
+	if err := app.SetRoot(root, true).
+		SetFocus(inputField).
+		Run(); err != nil {
 		panic(err)
 	}
 }

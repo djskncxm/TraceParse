@@ -19,6 +19,38 @@ type TraceLine struct {
 	PC     uint64
 }
 
+// TraceManager 管理指令跟踪
+type TraceManager struct {
+	Instructions []*TraceLine
+	PrevLine     *TraceLine // 添加上一条指令的缓存
+	CurrentIndex int
+}
+
+func NewTraceManager() *TraceManager {
+	return &TraceManager{
+		Instructions: make([]*TraceLine, 0),
+		CurrentIndex: 0,
+	}
+}
+
+func (tm *TraceManager) GetCurrent() *TraceLine {
+	if tm.CurrentIndex < 0 || tm.CurrentIndex >= len(tm.Instructions) {
+		return nil
+	}
+	return tm.Instructions[tm.CurrentIndex]
+}
+
+func (tm *TraceManager) GetLine(index int) *TraceLine {
+	if index >= 0 && index < len(tm.Instructions) {
+		return tm.Instructions[index]
+	}
+	return nil
+}
+
+func (tm *TraceManager) Total() int {
+	return len(tm.Instructions)
+}
+
 // ParseLine 解析日志中的一行
 func ParseLine(line string) (*TraceLine, error) {
 	fields := strings.Split(line, "|")
@@ -29,9 +61,7 @@ func ParseLine(line string) (*TraceLine, error) {
 	t := &TraceLine{}
 
 	// step
-
 	step, err := strconv.ParseUint(strings.TrimSpace(fields[0]), 16, 32)
-	// step, err := strconv.ParseUint(strings.TrimSpace(fields[0]), 0, 32)
 	if err != nil {
 		return nil, fmt.Errorf("解析 step 失败: %v", err)
 	}
@@ -123,14 +153,52 @@ func ReadTraceFile(filename string, callback func(*TraceLine)) error {
 	return nil
 }
 
-// 读取指令文件，发送到 channel
-func LoadInstructions(filename string, ch chan<- string) {
-	defer close(ch)
-	err := ReadTraceFile(filename, func(t *TraceLine) {
-		line := fmt.Sprintf("%04d | 0x%x | %s", t.Step, t.Addr, t.Instr)
-		ch <- line
-	})
-	if err != nil {
-		fmt.Println("读取日志失败:", err)
+func (tm *TraceManager) GetPrevLine() *TraceLine {
+	if tm.CurrentIndex <= 0 || tm.CurrentIndex >= len(tm.Instructions) {
+		return nil
 	}
+	return tm.Instructions[tm.CurrentIndex-1]
+}
+
+// 在 Next 和 Prev 方法中更新 PrevLine 缓存
+func (tm *TraceManager) Next() bool {
+	if tm.CurrentIndex < len(tm.Instructions)-1 {
+		tm.PrevLine = tm.GetCurrent() // 缓存当前指令作为下一次的上一条
+		tm.CurrentIndex++
+		return true
+	}
+	return false
+}
+
+func (tm *TraceManager) Prev() bool {
+	if tm.CurrentIndex > 0 {
+		tm.CurrentIndex--
+		// 更新 PrevLine，现在上一条是索引-2
+		if tm.CurrentIndex-1 >= 0 {
+			tm.PrevLine = tm.Instructions[tm.CurrentIndex-1]
+		} else {
+			tm.PrevLine = nil
+		}
+		return true
+	}
+	return false
+}
+
+func (tm *TraceManager) GoTo(index int) bool {
+	if index >= 0 && index < len(tm.Instructions) {
+		// 更新 PrevLine
+		if index-1 >= 0 {
+			tm.PrevLine = tm.Instructions[index-1]
+		} else {
+			tm.PrevLine = nil
+		}
+		tm.CurrentIndex = index
+		return true
+	}
+	return false
+}
+
+// 修改 AddInstruction 方法
+func (tm *TraceManager) AddInstruction(t *TraceLine) {
+	tm.Instructions = append(tm.Instructions, t)
 }
