@@ -28,7 +28,7 @@ func NewAsmView() *tview.TextView {
 		SetDynamicColors(true).
 		SetScrollable(true).
 		SetWrap(false)
-	asmView.SetBorder(true).SetTitle("Assembly Instructions")
+	asmView.SetBorder(true).SetTitle("|Assembly Instructions|")
 	asmView.SetBackgroundColor(tcell.ColorDefault)
 	return asmView
 }
@@ -37,7 +37,7 @@ func NewRegView() *tview.TextView {
 	regView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	regView.SetBorder(true).SetTitle("Registers")
+	regView.SetBorder(true).SetTitle("|Registers|")
 	regView.SetBackgroundColor(tcell.ColorDefault)
 	return regView
 }
@@ -45,7 +45,7 @@ func NewRegView() *tview.TextView {
 func NewStatusView() *tview.TextView {
 	statusView := tview.NewTextView().
 		SetDynamicColors(true)
-	statusView.SetBorder(true).SetTitle("Status")
+	statusView.SetBorder(true).SetTitle("|Status|")
 	statusView.SetBackgroundColor(tcell.ColorDefault)
 	return statusView
 }
@@ -54,7 +54,7 @@ func NewMemoryView() *tview.TextView {
 	memoryView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	memoryView.SetBorder(true).SetTitle("Memory")
+	memoryView.SetBorder(true).SetTitle("|Memory|")
 	memoryView.SetBackgroundColor(tcell.ColorDefault)
 	memoryView.SetText("Memory view - Not implemented yet")
 	return memoryView
@@ -109,7 +109,7 @@ func UpdateAsmView(state *AppState) {
 	}
 
 	// 计算显示范围
-	windowSize := 51 // 显示的行数
+	windowSize := 51
 	start := currentIdx - windowSize/2
 	if start < 0 {
 		start = 0
@@ -126,10 +126,9 @@ func UpdateAsmView(state *AppState) {
 	var sb strings.Builder
 	for i := start; i < end; i++ {
 		inst := state.TraceManager.GetLine(i)
-		
-		// 注意：GetLine 可能返回 nil，如果该行不在当前加载的窗口内
+
 		if inst == nil {
-			// 显示行号，但内容为加载中
+			// 显示加载状态
 			line := fmt.Sprintf("%4d | [gray]Loading...[-]", i+1)
 			if i == currentIdx {
 				sb.WriteString(fmt.Sprintf("[yellow]▶ %s[white]\n", line))
@@ -142,25 +141,27 @@ func UpdateAsmView(state *AppState) {
 		// 格式化指令行
 		line := fmt.Sprintf("%4d | 0x%016x | %s", inst.Step, inst.Addr, inst.Instr)
 
-		// 检查下一条指令（如果有）来判断哪些寄存器会被修改
-		nextInst := state.TraceManager.GetLine(i + 1)
-		if nextInst != nil {
-			// 比较两个指令的寄存器值
-			var changedRegs []string
-			for reg := 0; reg < 31; reg++ {
-				if inst.Regs[reg] != nextInst.Regs[reg] {
-					changedRegs = append(changedRegs, fmt.Sprintf("x%d", reg))
+		// 检查寄存器变化（只检查下一条指令是否已加载）
+		nextIdx := i + 1
+		if nextIdx < total {
+			nextInst := state.TraceManager.GetLine(nextIdx)
+			if nextInst != nil {
+				var changedRegs []string
+				for reg := 0; reg < 31; reg++ {
+					if inst.Regs[reg] != nextInst.Regs[reg] {
+						changedRegs = append(changedRegs, fmt.Sprintf("x%d", reg))
+					}
 				}
-			}
-			if inst.SP != nextInst.SP {
-				changedRegs = append(changedRegs, "SP")
-			}
-			if inst.PC != nextInst.PC {
-				changedRegs = append(changedRegs, "PC")
-			}
+				if inst.SP != nextInst.SP {
+					changedRegs = append(changedRegs, "SP")
+				}
+				if inst.PC != nextInst.PC {
+					changedRegs = append(changedRegs, "PC")
+				}
 
-			if len(changedRegs) > 0 {
-				line += fmt.Sprintf(" [gray]→ %s[-]", strings.Join(changedRegs, ", "))
+				if len(changedRegs) > 0 {
+					line += fmt.Sprintf(" [gray]→ %s[-]", strings.Join(changedRegs, ", "))
+				}
 			}
 		}
 
@@ -172,12 +173,23 @@ func UpdateAsmView(state *AppState) {
 		}
 	}
 
-	// 添加页眉信息
-	header := fmt.Sprintf("[cyan]Instructions: %d/%d[white]\n", currentIdx+1, total)
-	state.AsmView.SetText(header + sb.String())
+	// 添加页眉信息和加载范围
+	loadedStart := state.TraceManager.LoadedRange[0]
+	loadedEnd := state.TraceManager.LoadedRange[1]
+	header := fmt.Sprintf("[cyan]Instructions: %d/%d | Loaded: [%d, %d) (%d lines)[white]\n",
+		currentIdx+1, total, loadedStart, loadedEnd, loadedEnd-loadedStart)
 
-	// 滚动到合适位置
+	state.AsmView.SetText(header + sb.String())
 	state.AsmView.ScrollToBeginning()
+}
+
+// 添加一个刷新函数，用于窗口加载完成后更新UI
+func RefreshDisplay(state *AppState) {
+	state.App.QueueUpdateDraw(func() {
+		UpdateAsmView(state)
+		UpdateRegView(state)
+		UpdateStatusView(state)
+	})
 }
 
 func UpdateRegView(state *AppState) {
@@ -272,7 +284,7 @@ func UpdateStatusView(state *AppState) {
 // LoadInstructionsFromFile 加载指令文件
 func LoadInstructionsFromFile(filename string, state *AppState) error {
 	state.LoadedFile = filename
-	
+
 	// 使用简化的加载方法
 	err := core.ReadTraceFile(filename, state.TraceManager)
 	if err != nil {

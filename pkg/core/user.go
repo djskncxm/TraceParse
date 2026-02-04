@@ -28,14 +28,14 @@ type Command struct {
 }
 
 type User struct {
-	CurrentLine     int
-	TraceManager    *TraceManager
-	IsRunning       bool
-	AutoStep        bool
-	StepDelay       int      // 毫秒
-	LastCommand     *Command // 添加上一个命令
-	RepeatCount     int      // 重复次数计数
-	RegDetector     *RegisterChangeDetector
+	CurrentLine  int
+	TraceManager *TraceManager
+	IsRunning    bool
+	AutoStep     bool
+	StepDelay    int      // 毫秒
+	LastCommand  *Command // 添加上一个命令
+	RepeatCount  int      // 重复次数计数
+	RegDetector  *RegisterChangeDetector
 }
 
 func NewUser(tm *TraceManager) *User {
@@ -170,11 +170,10 @@ func (u *User) GetRegisterInfo() string {
 	}
 
 	t := u.TraceManager.GetCurrent()
-	// prev := u.TraceManager.GetPrevLine()
-	
+
 	// 更新寄存器变化检测
 	changes := u.RegDetector.Update(t)
-	
+
 	var sb strings.Builder
 
 	sb.WriteString("Registers:\n")
@@ -226,29 +225,6 @@ func (u *User) GetRegisterInfo() string {
 	}
 
 	return sb.String()
-}
-
-func (u *User) GetStatusInfo() string {
-	current := u.TraceManager.GetCurrent()
-	if current == nil {
-		return "No instruction loaded"
-	}
-
-	info := fmt.Sprintf("Step: %d | Addr: 0x%x | Total: %d | Current: %d",
-		current.Step, current.Addr, u.TraceManager.Total(), u.TraceManager.CurrentIndex+1)
-
-	// 添加命令信息
-	if u.LastCommand != nil && u.RepeatCount > 1 {
-		info += fmt.Sprintf(" | Repeating: %s (x%d)", u.LastCommand.Raw, u.RepeatCount)
-	} else if u.LastCommand != nil {
-		info += fmt.Sprintf(" | Last: %s", u.LastCommand.Raw)
-	}
-
-	if u.AutoStep {
-		info += " | [yellow]Auto-step ON[-]"
-	}
-
-	return info
 }
 
 func (u *User) ExecuteCommand(cmd *Command) (string, bool) {
@@ -351,4 +327,31 @@ func (u *User) ExecuteCommand(cmd *Command) (string, bool) {
 	}
 
 	return message, updated
+}
+func (u *User) GetStatusInfo() string {
+	current := u.TraceManager.GetCurrent()
+	if current == nil {
+		return "No instruction loaded"
+	}
+
+	// 获取加载范围
+	loadedStart := u.TraceManager.LoadedRange[0]
+	loadedEnd := u.TraceManager.LoadedRange[1]
+
+	info := fmt.Sprintf("Step: %d | Addr: 0x%x | Total: %d | Current: %d | Window: [%d, %d)",
+		current.Step, current.Addr, u.TraceManager.Total(),
+		u.TraceManager.CurrentIndex+1, loadedStart, loadedEnd)
+
+	// 添加命令信息
+	if u.LastCommand != nil && u.RepeatCount > 1 {
+		info += fmt.Sprintf(" | Repeating: %s (x%d)", u.LastCommand.Raw, u.RepeatCount)
+	} else if u.LastCommand != nil {
+		info += fmt.Sprintf(" | Last: %s", u.LastCommand.Raw)
+	}
+
+	if u.AutoStep {
+		info += " | [yellow]Auto-step ON[-]"
+	}
+
+	return info
 }
