@@ -2,11 +2,11 @@ package tui
 
 import (
 	"fmt"
-	"time"
 	"github.com/djskncxm/TraceParse/pkg/core"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"strings"
+	"time"
 )
 
 // AppState 管理应用状态
@@ -160,7 +160,7 @@ func UpdateAsmView(state *AppState) {
 	// 添加页眉信息
 	header := fmt.Sprintf("[cyan]Instructions: %d/%d[white]\n", currentIdx+1, total)
 	state.AsmView.SetText(header + sb.String())
-	
+
 	// 滚动到合适位置
 	state.AsmView.ScrollToBeginning()
 }

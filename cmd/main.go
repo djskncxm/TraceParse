@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag" // 添加flag包
 	"github.com/djskncxm/TraceParse/pkg/core"
 	"github.com/djskncxm/TraceParse/pkg/tui"
 	"github.com/gdamore/tcell/v2"
@@ -8,18 +9,24 @@ import (
 )
 
 func main() {
+	// 添加命令行参数解析
+	var traceFile string
+	flag.StringVar(&traceFile, "f", "", "Trace file to load")
+	flag.StringVar(&traceFile, "file", "", "Trace file to load")
+	flag.Parse()
+
 	app := tview.NewApplication()
-	
+
 	// 创建 TraceManager 和 User
 	tm := core.NewTraceManager()
 	user := core.NewUser(tm)
-	
+
 	// 创建视图
 	asmView := tui.NewAsmView()
 	regView := tui.NewRegView()
 	statusView := tui.NewStatusView()
 	memoryView := tui.NewMemoryView()
-	
+
 	// 创建应用状态
 	state := &tui.AppState{
 		TraceManager: tm,
@@ -31,14 +38,14 @@ func main() {
 		MemoryView:   memoryView,
 		AutoStepChan: make(chan bool, 1),
 	}
-	
+
 	// 启动自动步进管理器
 	go tui.StartAutoStep(state)
-	
+
 	// 创建输入框
 	inputField := tui.NewInputView(state)
 	state.InputField = inputField
-	
+
 	// 添加全局键盘快捷键
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
@@ -72,29 +79,35 @@ func main() {
 		}
 		return event
 	})
-	
+
 	// 创建右侧面板
 	rightPanel := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(statusView, 5, 1, false).
 		AddItem(regView, 0, 3, false).
 		AddItem(inputField, 3, 0, true)
-	
+
 	// 创建根布局
 	root := tview.NewFlex().
 		AddItem(asmView, 0, 1, false).    // 汇编视图占2/5
 		AddItem(rightPanel, 0, 2, false). // 右侧面板占2/5
 		AddItem(memoryView, 0, 1, false)  // 内存视图占1/5
-	
-	// 加载示例指令文件
+
+	// 加载指令文件
 	go func() {
-		filename := "../assets/code.log" // 修改为你的文件路径
+		var filename string
+
+		// 优先使用命令行参数指定的文件
+		if traceFile != "" {
+			filename = traceFile
+		}
+
 		err := tui.LoadInstructionsFromFile(filename, state)
 		if err != nil {
 			// 如果没有文件，创建一些示例指令
-			state.StatusView.SetText("Error loading file: " + err.Error() + 
+			state.StatusView.SetText("Error loading file: " + err.Error() +
 				"\nUsing example instructions...")
-			
+
 			// 添加一些示例指令
 			exampleInstructions := []string{
 				"0001|0x400000|0x0|\"add x0, x1, x2\"|0x0|0x1|0x2|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x400000|0x400004",
@@ -103,17 +116,17 @@ func main() {
 				"0004|0x40000c|0xc|\"add x1, x2, x3\"|0x0|0x3|0x2|0x3|0x4|0x5|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x40000c|0x400010",
 				"0005|0x400010|0x10|\"mov x8, x9\"|0x0|0x3|0x2|0x3|0x4|0x5|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x400010|0x400014",
 			}
-			
+
 			for _, line := range exampleInstructions {
 				if traceLine, err := core.ParseLine(line); err == nil {
 					tm.AddInstruction(traceLine)
 				}
 			}
-			
+
 			tui.UpdateDisplay(state, nil)
 		}
 	}()
-	
+
 	// 设置初始帮助信息
 	helpText := `Welcome to TraceParse!
   
@@ -130,9 +143,9 @@ func main() {
     q, quit       - Quit
   
   Tip: Press Enter without typing to repeat last command!`
-	
+
 	statusView.SetText(helpText)
-	
+
 	// 运行应用
 	if err := app.SetRoot(root, true).
 		SetFocus(inputField).
