@@ -5,6 +5,7 @@ import (
 	"github.com/djskncxm/TraceParse/pkg/core"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -21,6 +22,10 @@ type AppState struct {
 	AutoStepChan chan bool // 用于控制自动步进
 	MemoryView   *tview.TextView
 	LoadedFile   string // 记录加载的文件名
+
+	// 新增：BL 和 RW 视图
+	BlView *tview.TextView
+	RwView *tview.TextView
 }
 
 func NewAsmView() *tview.TextView {
@@ -139,7 +144,7 @@ func UpdateAsmView(state *AppState) {
 		}
 
 		// 格式化指令行
-		line := fmt.Sprintf("%4d | 0x%x | %s", inst.Step, inst.Offset, inst.Instr)
+		line := fmt.Sprintf("%4d | 0x%012x | 0x%x | %s", inst.Step, inst.Addr, inst.Offset, inst.Instr)
 
 		// 检查寄存器变化（只检查下一条指令是否已加载）
 		nextIdx := i + 1
@@ -215,6 +220,8 @@ func StartAutoStep(state *AppState) {
 							if updated {
 								UpdateAsmView(state)
 								UpdateRegView(state)
+								UpdateRwView(state)
+								UpdateBlView(state)
 							}
 							if message != "" {
 								state.StatusView.SetText(message)
@@ -246,6 +253,8 @@ func UpdateDisplay(state *AppState, command *core.Command) {
 	if state.TraceManager.Total() == 0 {
 		state.AsmView.SetText("No instructions loaded")
 		state.RegView.SetText("")
+		state.BlView.SetText("")
+		state.RwView.SetText("")
 		state.StatusView.SetText("Load instructions using: load <filename>")
 		return
 	}
@@ -262,33 +271,46 @@ func UpdateDisplay(state *AppState, command *core.Command) {
 		}
 	}
 
-	// 更新汇编视图（高亮当前行）
+	// 更新各个视图
 	UpdateAsmView(state)
-
-	// 更新寄存器视图
 	UpdateRegView(state)
-
-	// 更新状态视图
+	UpdateBlView(state)
+	UpdateRwView(state)
 	UpdateStatusView(state)
 }
 
-func UpdateStatusView(state *AppState) {
-	statusInfo := state.User.GetStatusInfo()
-
-	// 添加帮助提示
-	helpText := `[gray]Commands: n/p, space=repeat, ←/→=prev/next, q=quit[-]`
-
-	state.StatusView.SetText(statusInfo + "\n" + helpText)
-}
-
-// LoadInstructionsFromFile 加载指令文件
+// LoadInstructionsFromFile 加载指令文件和相关日志
 func LoadInstructionsFromFile(filename string, state *AppState) error {
 	state.LoadedFile = filename
 
-	// 使用简化的加载方法
+	// 加载主指令文件
 	err := core.ReadTraceFile(filename, state.TraceManager)
 	if err != nil {
 		return err
+	}
+
+	// 尝试加载 BL 和 RW 日志
+	dir := filepath.Dir(filename)
+	baseName := filepath.Base(filename)
+
+	// 根据主文件名推断日志文件名
+	if strings.HasSuffix(baseName, "code.log") {
+		blFile := filepath.Join(dir, "bl.log")
+		rwFile := filepath.Join(dir, "rw.log")
+
+		// 加载 BL 日志
+		if err := state.TraceManager.LogManager.LoadBLLog(blFile); err != nil {
+			state.StatusView.SetText(fmt.Sprintf("Warning: Could not load BL log: %v", err))
+		} else {
+			state.StatusView.SetText(fmt.Sprintf("Loaded BL log from: %s", blFile))
+		}
+
+		// 加载 RW 日志
+		if err := state.TraceManager.LogManager.LoadRWLog(rwFile); err != nil {
+			state.StatusView.SetText(fmt.Sprintf("Warning: Could not load RW log: %v", err))
+		} else {
+			state.StatusView.SetText(fmt.Sprintf("Loaded RW log from: %s", rwFile))
+		}
 	}
 
 	// 重置用户状态
@@ -301,4 +323,115 @@ func LoadInstructionsFromFile(filename string, state *AppState) error {
 	UpdateDisplay(state, nil)
 
 	return nil
+}
+func UpdateStatusView(state *AppState) {
+	statusInfo := state.User.GetStatusInfo()
+
+	// 添加帮助提示
+	helpText := `[gray]Commands: n/p, space=repeat, ←/→=prev/next, q=quit[-]`
+
+	state.StatusView.SetText(statusInfo + "\n" + helpText)
+}
+
+// NewLogView 创建日志视图
+func NewLogView(title string) *tview.TextView {
+	view := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true).
+		SetWrap(false)
+	view.SetBorder(true).SetTitle(fmt.Sprintf("|%s|", title))
+	view.SetBackgroundColor(tcell.ColorDefault)
+	return view
+}
+
+// 更新 BL 视图
+func UpdateBlView(state *AppState) {
+	current := state.TraceManager.GetCurrent()
+	if current == nil {
+		state.BlView.SetText("No instruction loaded")
+		return
+	}
+
+	step := int(current.Step)
+	logs := state.TraceManager.LogManager.GetBLLogsForStep(step)
+
+	if len(logs) == 0 {
+		state.BlView.SetText("No BL logs for current step")
+		return
+	}
+
+	var sb strings.Builder
+	for i, log := range logs {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(fmt.Sprintf("[yellow]Step %d[-]\n", log.Step))
+		sb.WriteString(fmt.Sprintf("Address: %s\n", log.Address))
+		if log.Function != "" {
+			sb.WriteString(fmt.Sprintf("Function: [green]%s[-]\n", log.Function))
+		}
+
+		// 显示内存内容（最多显示3行）
+		for j, memLine := range log.MemoryHex {
+			if j >= 3 { // 限制显示行数
+				break
+			}
+			sb.WriteString(fmt.Sprintf("%s\n", memLine))
+		}
+	}
+
+	state.BlView.SetText(sb.String())
+	state.BlView.ScrollToBeginning()
+}
+
+// 更新 RW 视图
+func UpdateRwView(state *AppState) {
+	current := state.TraceManager.GetCurrent()
+	if current == nil {
+		state.RwView.SetText("No instruction loaded")
+		return
+	}
+
+	step := int(current.Step)
+	logs := state.TraceManager.LogManager.GetRWLogsForStep(step)
+
+	if len(logs) == 0 {
+		state.RwView.SetText("No RW logs for current step")
+		return
+	}
+
+	var sb strings.Builder
+	for i, log := range logs {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+
+		// 根据读写类型设置颜色
+		typeColor := "red"
+		if log.Type == "r" {
+			typeColor = "green"
+		}
+
+		sb.WriteString(fmt.Sprintf("[yellow]Step %d[-] [%s]%s[-]\n", log.Step, typeColor, strings.ToUpper(log.Type)))
+		sb.WriteString(fmt.Sprintf("Address: %s\n", log.Address))
+		if log.Offset != "" {
+			sb.WriteString(fmt.Sprintf("Offset: %s\n", log.Offset))
+		}
+
+		// 显示内存内容（最多显示3行）
+		for j, memLine := range log.MemoryHex {
+			if j >= 3 { // 限制显示行数
+				break
+			}
+			sb.WriteString(fmt.Sprintf("%s\n", memLine))
+		}
+
+		// 添加分隔线（如果不是最后一条）
+		if i < len(logs)-1 {
+			sb.WriteString("[gray]---[-]\n")
+		}
+	}
+
+	state.RwView.SetText(sb.String())
+	state.RwView.ScrollToBeginning()
 }

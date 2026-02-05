@@ -28,6 +28,10 @@ func main() {
 	statusView := tui.NewStatusView()
 	memoryView := tui.NewMemoryView()
 
+	// 创建 BL 和 RW 视图
+	blView := tui.NewLogView("BL Log")
+	rwView := tui.NewLogView("RW Log")
+
 	// 创建应用状态
 	state := &tui.AppState{
 		TraceManager: tm,
@@ -37,6 +41,8 @@ func main() {
 		RegView:      regView,
 		StatusView:   statusView,
 		MemoryView:   memoryView,
+		BlView:       blView,
+		RwView:       rwView,
 		AutoStepChan: make(chan bool, 1),
 	}
 
@@ -82,20 +88,20 @@ func main() {
 		return event
 	})
 
-	// 创建右侧面板
 	rightPanel := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(statusView, 5, 1, false).
-		AddItem(regView, 0, 3, false).
-		AddItem(inputField, 3, 0, true)
+		AddItem(statusView, 5, 1, false). // 状态视图：固定5行
+		AddItem(regView, 0, 2, false).    // 寄存器视图：动态高度，比例2
+		AddItem(blView, 0, 2, false).     // BL日志视图：动态高度，比例2
+		AddItem(rwView, 0, 2, false).     // RW日志视图：动态高度，比例2
+		AddItem(inputField, 3, 0, true)   // 输入框：固定3行
 
-	// 创建根布局
 	root := tview.NewFlex().
-		AddItem(asmView, 0, 1, false).    // 汇编视图占2/5
-		AddItem(rightPanel, 0, 2, false). // 右侧面板占2/5
-		AddItem(memoryView, 0, 1, false)  // 内存视图占1/5
+		AddItem(asmView, 0, 2, false).    // 汇编视图占3/5
+		AddItem(rightPanel, 0, 3, false). // 右侧面板占2/5
+		AddItem(memoryView, 0, 2, false)  // 内存视图：动态高度，比例2
 
-	// 加载指令文件
+	// 加载指令文件（与之前相同）
 	go func() {
 		var filename string
 
@@ -104,12 +110,19 @@ func main() {
 			filename = traceFile
 		}
 
+		// 初始状态信息
+		app.QueueUpdateDraw(func() {
+			statusView.SetText("Loading...")
+		})
+
 		if filename != "" {
 			err := tui.LoadInstructionsFromFile(filename, state)
 			if err != nil {
 				// 如果没有文件，创建一些示例指令
-				statusView.SetText("Error loading file: " + err.Error() +
-					"\nUsing example instructions...")
+				app.QueueUpdateDraw(func() {
+					statusView.SetText("Error loading file: " + err.Error() +
+						"\nUsing example instructions...")
+				})
 
 				// 添加一些示例指令
 				exampleInstructions := []string{
@@ -126,12 +139,16 @@ func main() {
 					}
 				}
 
-				tui.UpdateDisplay(state, nil)
+				app.QueueUpdateDraw(func() {
+					tui.UpdateDisplay(state, nil)
+				})
 			}
 		} else {
 			// 如果没有指定文件，使用示例
-			statusView.SetText("No file specified. Using example instructions...")
-			
+			app.QueueUpdateDraw(func() {
+				statusView.SetText("No file specified. Using example instructions...")
+			})
+
 			// 添加一些示例指令
 			exampleInstructions := []string{
 				"0001|0x400000|0x0|\"add x0, x1, x2\"|0x0|0x1|0x2|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x0|0x400000|0x400004",
@@ -147,7 +164,9 @@ func main() {
 				}
 			}
 
-			tui.UpdateDisplay(state, nil)
+			app.QueueUpdateDraw(func() {
+				tui.UpdateDisplay(state, nil)
+			})
 		}
 	}()
 

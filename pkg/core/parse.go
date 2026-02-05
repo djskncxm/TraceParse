@@ -30,6 +30,7 @@ type TraceManager struct {
 	FileName   string // 新增：记录文件名
 	windowSize int    // 新增：窗口大小
 	isLoading  bool   // 新增：防止重复加载
+	LogManager *LogManager
 }
 
 func NewTraceManager() *TraceManager {
@@ -40,6 +41,7 @@ func NewTraceManager() *TraceManager {
 		LoadedRange:  [2]int{-1, -1},
 		windowSize:   2000, // 默认窗口大小
 		isLoading:    false,
+		LogManager:   NewLogManager(), // 初始化日志管理器
 	}
 }
 
