@@ -65,15 +65,16 @@ func main() {
 			case 'q', 'Q':
 				app.Stop()
 				return nil
-			case ' ':
+			case ']':
 				// 空格键：重复上一个命令或执行next
 				cmd := user.ParseCommand("")
 				if cmd != nil {
 					tui.UpdateDisplay(state, cmd)
 				} else {
 					// 否则执行next
-					cmd = user.ParseCommand("n")
-					tui.UpdateDisplay(state, cmd)
+					// cmd = user.ParseCommand("n")
+					// tui.UpdateDisplay(state, cmd)
+					return nil
 				}
 				return nil
 			}

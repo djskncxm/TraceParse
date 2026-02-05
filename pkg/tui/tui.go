@@ -139,7 +139,7 @@ func UpdateAsmView(state *AppState) {
 		}
 
 		// 格式化指令行
-		line := fmt.Sprintf("%4d | 0x%016x | %s", inst.Step, inst.Addr, inst.Instr)
+		line := fmt.Sprintf("%4d | 0x%x | %s", inst.Step, inst.Offset, inst.Instr)
 
 		// 检查寄存器变化（只检查下一条指令是否已加载）
 		nextIdx := i + 1
@@ -167,7 +167,7 @@ func UpdateAsmView(state *AppState) {
 
 		// 高亮当前行
 		if i == currentIdx {
-			sb.WriteString(fmt.Sprintf("[yellow]▶ %s[white]\n", line))
+			sb.WriteString(fmt.Sprintf("[red]▶ %s[white]\n", line))
 		} else {
 			sb.WriteString(fmt.Sprintf("  %s\n", line))
 		}
@@ -176,7 +176,7 @@ func UpdateAsmView(state *AppState) {
 	// 添加页眉信息和加载范围
 	loadedStart := state.TraceManager.LoadedRange[0]
 	loadedEnd := state.TraceManager.LoadedRange[1]
-	header := fmt.Sprintf("[cyan]Instructions: %d/%d | Loaded: [%d, %d) (%d lines)[white]\n",
+	header := fmt.Sprintf("[green]Instructions: %d/%d | Loaded: [%d, %d) (%d lines)[white]\n",
 		currentIdx+1, total, loadedStart, loadedEnd, loadedEnd-loadedStart)
 
 	state.AsmView.SetText(header + sb.String())
