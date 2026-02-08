@@ -144,7 +144,7 @@ func UpdateAsmView(state *AppState) {
 		}
 
 		// 格式化指令行
-		line := fmt.Sprintf("%4d | 0x%012x | 0x%x | %s", inst.Step, inst.Addr, inst.Offset, inst.Instr)
+		line := fmt.Sprintf("%4d | 0x%012x | 0x%x | %s", inst.Step, inst.Addr, inst.Offset, tview.Escape(inst.Instr))
 
 		// 检查寄存器变化（只检查下一条指令是否已加载）
 		nextIdx := i + 1
@@ -186,15 +186,6 @@ func UpdateAsmView(state *AppState) {
 
 	state.AsmView.SetText(header + sb.String())
 	state.AsmView.ScrollToBeginning()
-}
-
-// 添加一个刷新函数，用于窗口加载完成后更新UI
-func RefreshDisplay(state *AppState) {
-	state.App.QueueUpdateDraw(func() {
-		UpdateAsmView(state)
-		UpdateRegView(state)
-		UpdateStatusView(state)
-	})
 }
 
 func UpdateRegView(state *AppState) {
