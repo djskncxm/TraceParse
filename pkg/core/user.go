@@ -130,7 +130,7 @@ func (u *User) ParseCommand(cmd string) *Command {
 	case "run":
 		command.Type = CmdRun
 		u.AutoStep = true
-	case "stop":
+	case "s", "stop":
 		command.Type = CmdStop
 		u.AutoStep = false
 	case "step":

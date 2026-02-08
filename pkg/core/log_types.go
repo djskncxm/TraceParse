@@ -97,6 +97,7 @@ func ParseRWLine(line string) (*RWLogEntry, error) {
 	stepStr := strings.TrimSpace(parts[0])
 	step, err := strconv.Atoi(stepStr)
 	if err != nil {
+		// bug
 		return nil, fmt.Errorf("invalid step number: %v", err)
 	}
 
@@ -165,7 +166,8 @@ func (lm *LogManager) LoadBLLog(filename string) error {
 			// 解析新条目
 			entry, err := ParseBLLine(line)
 			if err != nil {
-				fmt.Printf("Error parsing BL log line: %v\n", err)
+				// 跳转也同样不一定每行都有跳转，不应该解析不到到就报错，继续下一行即可
+				// fmt.Printf("Error parsing BL log line: %v\n", err)
 				continue
 			}
 
@@ -217,7 +219,8 @@ func (lm *LogManager) LoadRWLog(filename string) error {
 			// 解析新条目
 			entry, err := ParseRWLine(line)
 			if err != nil {
-				fmt.Printf("Error parsing RW log line: %v\n", err)
+				// 也不是每行都有对应的内存读写，暂时注释，日后寻找更合适的解决方法
+				// fmt.Printf("Error parsing RW log line: %v\n", err)
 				continue
 			}
 
